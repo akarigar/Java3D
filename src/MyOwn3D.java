@@ -1,7 +1,10 @@
 import com.sun.j3d.utils.behaviors.mouse.MouseRotate;
+import com.sun.j3d.utils.behaviors.mouse.MouseTranslate;
+import com.sun.j3d.utils.behaviors.mouse.MouseZoom;
 import com.sun.j3d.utils.geometry.Box;
 import com.sun.j3d.utils.geometry.Cylinder;
 import com.sun.j3d.utils.geometry.Sphere;
+import com.sun.j3d.utils.image.TextureLoader;
 import com.sun.j3d.utils.universe.SimpleUniverse;
 
 import java.awt.BorderLayout;
@@ -14,9 +17,10 @@ import javax.media.j3d.Canvas3D;
 import javax.media.j3d.ColoringAttributes;
 import javax.media.j3d.Material;
 import javax.media.j3d.PolygonAttributes;
+import javax.media.j3d.Texture;
+import javax.media.j3d.TextureAttributes;
 import javax.media.j3d.Transform3D;
 import javax.media.j3d.TransformGroup;
-import javax.media.j3d.TransparencyAttributes;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.WindowConstants;
@@ -32,7 +36,7 @@ public class MyOwn3D {
   /**
    * This describes where the camera is located in the room.
    */
-  private final Point3d EYE = new Point3d(-ROOM_HALF, 0, 0);
+  private final Point3d EYE = new Point3d(0, 0, 10);//new Point3d(-ROOM_HALF, 0, 0);
 
   public MyOwn3D() {
     JPanel panel = new JPanel(new BorderLayout());
@@ -55,11 +59,15 @@ public class MyOwn3D {
     // Set the camera
     Transform3D viewPlatformTransform = new Transform3D();
     universe.getViewingPlatform().getViewPlatformTransform().getTransform(viewPlatformTransform);
-    viewPlatformTransform.lookAt(EYE, new Point3d(0, -ROOM_HALF, 0), new Vector3d(0, 1, 0));
+    viewPlatformTransform.lookAt(EYE, new Point3d(0, 0, 0), new Vector3d(0, 1, 0));
     viewPlatformTransform.invert();
     universe.getViewingPlatform().getViewPlatformTransform().setTransform(viewPlatformTransform);
 
     return canvas3D;
+  }
+
+  private Texture loadTexture(String imageName) {
+    return new TextureLoader("textures/" + imageName, null).getTexture();
   }
 
   private BranchGroup createSceneGraph() {
@@ -69,12 +77,24 @@ public class MyOwn3D {
 
     // Allow rotating the scene with the mouse
     MouseRotate mouseRotate = new MouseRotate();
-    mouseRotate.setTransformGroup(group);
     mouseRotate.setSchedulingBounds(new BoundingSphere());
+    mouseRotate.setTransformGroup(group);
+
+    // Allow translating the scene with the mouse
+    MouseTranslate mouseTranslate = new MouseTranslate();
+    mouseTranslate.setSchedulingBounds(new BoundingSphere());
+    mouseTranslate.setTransformGroup(group);
+
+    // Allow translating the scene with the mouse
+    MouseZoom mouseZoom = new MouseZoom();
+    mouseZoom.setSchedulingBounds(new BoundingSphere());
+    mouseZoom.setTransformGroup(group);
 
     BranchGroup scene = new BranchGroup();
     scene.addChild(group);
     scene.addChild(mouseRotate);
+    scene.addChild(mouseTranslate);
+    scene.addChild(mouseZoom);
     scene.compile();
     return scene;
   }
@@ -92,10 +112,10 @@ public class MyOwn3D {
     return group;
   }
 
-  private Room createRoom() {
-    Room room = new Room(ROOM_SIZE, ROOM_SIZE, ROOM_SIZE);
+  private TransformGroup createRoom() {
+    Box room = new Box(ROOM_HALF, ROOM_HALF, ROOM_HALF, null);
     PolygonAttributes attributes = new PolygonAttributes();
-    attributes.setCullFace(PolygonAttributes.CULL_NONE);
+    attributes.setCullFace(PolygonAttributes.CULL_FRONT);
 
     // Paint walls
     Appearance wallsAppearance = new Appearance();
@@ -103,10 +123,10 @@ public class MyOwn3D {
       new ColoringAttributes(new Color3f(1.0f, 0.0f, 0.0f), ColoringAttributes.NICEST)
     );
     wallsAppearance.setPolygonAttributes(attributes);
-    room.setAppearance(Room.BACK, wallsAppearance);
-    room.setAppearance(Room.FRONT, wallsAppearance);
-    room.setAppearance(Room.LEFT, wallsAppearance);
-    room.setAppearance(Room.RIGHT, wallsAppearance);
+    room.setAppearance(Box.BACK, wallsAppearance);
+    room.setAppearance(Box.FRONT, wallsAppearance);
+    room.setAppearance(Box.LEFT, wallsAppearance);
+    room.setAppearance(Box.RIGHT, wallsAppearance);
 
     // Paint floor
     Appearance floorAppearance = new Appearance();
@@ -114,19 +134,19 @@ public class MyOwn3D {
       new ColoringAttributes(new Color3f(0.22f, 0.37f, 0.06f), ColoringAttributes.NICEST)
     );
     floorAppearance.setPolygonAttributes(attributes);
-    room.setAppearance(Room.FLOOR, floorAppearance);
+    room.setAppearance(Box.BOTTOM, floorAppearance);
 
     // Paint ceiling
-    TransparencyAttributes transparencyAttributes = new TransparencyAttributes(TransparencyAttributes.NICEST, 1.0f);
     Appearance ceilingAppearance = new Appearance();
     ceilingAppearance.setColoringAttributes(
-      new ColoringAttributes(new Color3f(1.0f, 1.0f, 1.0f), ColoringAttributes.NICEST)
+      new ColoringAttributes(new Color3f(0.53f, 0.81f, 0.92f), ColoringAttributes.NICEST)
     );
     ceilingAppearance.setPolygonAttributes(attributes);
-    ceilingAppearance.setTransparencyAttributes(transparencyAttributes);
-    room.setAppearance(Room.CEILING, ceilingAppearance);
+    room.setAppearance(Box.TOP, ceilingAppearance);
 
-    return room;
+    TransformGroup group = new TransformGroup();
+    group.addChild(room);
+    return group;
   }
 
   private TransformGroup createInclinedPlanes() {
@@ -200,12 +220,15 @@ public class MyOwn3D {
     TransformGroup transformGroup;
 
     // Create a small ball that will be on top of the big inclined plane at the back right of the room
+    TextureAttributes textureAttributes = new TextureAttributes();
+    textureAttributes.setTextureMode(TextureAttributes.MODULATE);
     appearance = new Appearance();
-    appearance.setColoringAttributes(new ColoringAttributes(new Color3f(1.0f, 1.0f, 1.0f), ColoringAttributes.NICEST));
+    appearance.setTexture(loadTexture("football.png"));
+    appearance.setTextureAttributes(textureAttributes);
     location = new Transform3D();
     location.setTranslation(new Vector3f(ROOM_HALF - 1.0f, 1.0f - ROOM_HALF + radius, radius - ROOM_HALF));
     transformGroup = new TransformGroup(location);
-    transformGroup.addChild(new Sphere(radius, appearance));
+    transformGroup.addChild(new Sphere(radius, Sphere.GENERATE_TEXTURE_COORDS, appearance));
     root.addChild(transformGroup);
 
     // Create a larger sphere that will be near the center of the room
@@ -224,9 +247,13 @@ public class MyOwn3D {
   private TransformGroup createColumn() {
     TransformGroup group = new TransformGroup();
 
+    TextureAttributes textureAttributes = new TextureAttributes();
+    textureAttributes.setTextureMode(TextureAttributes.MODULATE);
     Appearance appearance = new Appearance();
     appearance.setColoringAttributes(new ColoringAttributes(new Color3f(0.3f, 0.3f, 0.3f), ColoringAttributes.NICEST));
-    group.addChild(new Box(0.25f, ROOM_SIZE / 2, 0.25f, appearance));
+    appearance.setTexture(loadTexture("brick.gif"));
+    appearance.setTextureAttributes(textureAttributes);
+    group.addChild(new Box(0.25f, ROOM_SIZE / 2, 0.25f, Box.GENERATE_TEXTURE_COORDS, appearance));
 
     return group;
   }
